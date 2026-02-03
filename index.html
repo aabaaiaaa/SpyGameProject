@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operation: Double Agent</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0a0a0a;
+      color: #00ff00;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .scanline {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(0, 255, 0, 0.1);
+      animation: scan 4s linear infinite;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    @keyframes scan {
+      0% { top: 0; }
+      100% { top: 100%; }
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1 {
+      text-align: center;
+      color: #ff0000;
+      text-shadow: 0 0 10px #ff0000;
+      font-size: 2.5em;
+      letter-spacing: 5px;
+      margin-bottom: 10px;
+      animation: flicker 2s infinite;
+    }
+
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+
+    .classified {
+      text-align: center;
+      color: #00ff00;
+      font-size: 0.8em;
+      letter-spacing: 3px;
+      margin-bottom: 20px;
+      border: 1px solid #00ff00;
+      padding: 5px;
+      display: inline-block;
+      margin-left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+    }
+
+    /* Join Screen */
+    .join-container {
+      max-width: 600px;
+      margin: 50px auto;
+      border: 2px solid #00ff00;
+      padding: 40px;
+      background: rgba(0, 255, 0, 0.05);
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+    }
+
+    input {
+      width: 100%;
+      padding: 15px;
+      background: #000;
+      border: 1px solid #00ff00;
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1em;
+      margin: 20px 0;
+    }
+
+    button {
+      padding: 15px 30px;
+      background: #000;
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1em;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-transform: uppercase;
+    }
+
+    button:hover:not(:disabled) {
+      background: rgba(0, 255, 0, 0.2);
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      border-color: #ff0000;
+      color: #ff0000;
+    }
+
+    button.danger:hover:not(:disabled) {
+      background: rgba(255, 0, 0, 0.2);
+    }
+
+    /* Lobby Screen */
+    .lobby-grid {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .players-panel, .chat-panel {
+      border: 2px solid #00ff00;
+      padding: 20px;
+      background: rgba(0, 255, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .player-list {
+      list-style: none;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .player-item {
+      padding: 15px;
+      margin: 10px 0;
+      border: 1px solid #00ff00;
+      background: rgba(0, 255, 0, 0.1);
+    }
+
+    .player-item.ready {
+      border-color: #ffff00;
+      color: #ffff00;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #00ff00;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: rgba(0, 0, 0, 0.5);
+      max-height: 400px;
+    }
+
+    .message {
+      margin: 5px 0;
+      padding: 5px;
+    }
+
+    .message.system {
+      color: #ffff00;
+      font-style: italic;
+    }
+
+    .message-input {
+      display: flex;
+      gap: 10px;
+    }
+
+    /* Briefing Screen */
+    .briefing-container {
+      max-width: 800px;
+      margin: 50px auto;
+      border: 3px solid #ff0000;
+      padding: 40px;
+      background: rgba(255, 0, 0, 0.1);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.3); }
+      50% { box-shadow: 0 0 40px rgba(255, 0, 0, 0.6); }
+    }
+
+    .briefing-text {
+      font-size: 1.3em;
+      line-height: 1.8;
+      text-align: center;
+    }
+
+    .role-badge {
+      display: inline-block;
+      padding: 10px 20px;
+      border: 2px solid;
+      margin: 20px 0;
+      font-size: 1.5em;
+      letter-spacing: 3px;
+    }
+
+    .role-badge.agent {
+      border-color: #00ff00;
+      color: #00ff00;
+    }
+
+    .role-badge.double-agent {
+      border-color: #ff0000;
+      color: #ff0000;
+      animation: flicker 1s infinite;
+    }
+
+    /* Game Screen */
+    .game-layout {
+      display: grid;
+      grid-template-columns: 250px 1fr 250px;
+      gap: 20px;
+      flex: 1;
+      height: calc(100vh - 150px);
+    }
+
+    .info-panel {
+      border: 2px solid #00ff00;
+      padding: 15px;
+      background: rgba(0, 255, 0, 0.05);
+      overflow-y: auto;
+    }
+
+    .game-main {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .mission-area, .hand-area {
+      border: 2px solid #00ff00;
+      padding: 20px;
+      background: rgba(0, 255, 0, 0.05);
+    }
+
+    .mission-area {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .mission-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+
+    .mission-card {
+      border: 2px solid #00ff00;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .mission-card:hover {
+      background: rgba(0, 255, 0, 0.2);
+      box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+    }
+
+    .mission-card.selected {
+      border-color: #ffff00;
+      background: rgba(255, 255, 0, 0.2);
+    }
+
+    .card-hand {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .item-card {
+      width: 150px;
+      padding: 15px;
+      border: 2px solid #00ff00;
+      background: rgba(0, 0, 0, 0.7);
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+    }
+
+    .item-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0, 255, 0, 0.5);
+    }
+
+    .item-card.selected {
+      border-color: #ffff00;
+      background: rgba(255, 255, 0, 0.2);
+    }
+
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .player-select {
+      padding: 15px;
+      border: 2px solid #00ff00;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .player-select:hover {
+      background: rgba(0, 255, 0, 0.2);
+    }
+
+    .player-select.selected {
+      border-color: #ffff00;
+      background: rgba(255, 255, 0, 0.2);
+    }
+
+    .round-indicator {
+      text-align: center;
+      font-size: 1.5em;
+      color: #ff0000;
+      margin: 10px 0;
+      padding: 10px;
+      border: 2px solid #ff0000;
+    }
+
+    .status-text {
+      text-align: center;
+      font-size: 1.2em;
+      margin: 15px 0;
+      padding: 15px;
+      border: 1px solid #00ff00;
+      background: rgba(0, 255, 0, 0.1);
+    }
+
+    .vote-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin: 30px 0;
+    }
+
+    .vote-option {
+      padding: 20px;
+      border: 2px solid #ff0000;
+      cursor: pointer;
+      text-align: center;
+      font-size: 1.2em;
+      transition: all 0.3s;
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .vote-option:hover {
+      background: rgba(255, 0, 0, 0.2);
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+    }
+
+    .vote-option.selected {
+      border-color: #ffff00;
+      background: rgba(255, 255, 0, 0.2);
+    }
+
+    .gameover-container {
+      max-width: 900px;
+      margin: 50px auto;
+      border: 3px solid #ff0000;
+      padding: 40px;
+      background: rgba(255, 0, 0, 0.1);
+    }
+
+    .result-message {
+      font-size: 2em;
+      text-align: center;
+      margin: 30px 0;
+      line-height: 1.5;
+    }
+
+    .stats-table {
+      margin: 30px 0;
+      border: 1px solid #00ff00;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px;
+      border-bottom: 1px solid #00ff00;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="scanline"></div>
+
+  <div class="container">
+    <h1>OPERATION: DOUBLE AGENT</h1>
+    <div class="classified">[ CLASSIFIED - TOP SECRET ]</div>
+
+    <!-- Join Screen -->
+    <div id="joinScreen" class="screen active">
+      <div class="join-container">
+        <h2 style="text-align: center; margin-bottom: 20px;">ENTER CODENAME</h2>
+        <input type="text" id="playerName" placeholder="Agent Codename" maxlength="20">
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button onclick="document.getElementById('playerName').value = generateCodename()" style="flex: 1;">
+            GENERATE NEW
+          </button>
+          <button onclick="joinLobby()" style="flex: 2;">ENTER OPERATION</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div id="lobbyScreen" class="screen">
+      <div class="lobby-grid">
+        <div class="players-panel">
+          <h2>AGENTS IN BRIEFING ROOM</h2>
+          <p style="margin: 10px 0; color: #ffff00;">Minimum 3 agents required</p>
+          <ul class="player-list" id="playerList"></ul>
+          <button onclick="toggleReady()" id="readyBtn">MARK READY</button>
+        </div>
+
+        <div class="chat-panel">
+          <h2>SECURE COMMS</h2>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="message-input">
+            <input type="text" id="messageInput" placeholder="Type message..."
+                   onkeypress="if(event.key==='Enter') sendMessage()">
+            <button onclick="sendMessage()">SEND</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Briefing Screen -->
+    <div id="briefingScreen" class="screen">
+      <div class="briefing-container">
+        <h2 style="text-align: center; color: #ff0000; font-size: 2em; margin-bottom: 30px;">
+          MISSION BRIEFING
+        </h2>
+        <div class="role-badge" id="roleBadge"></div>
+        <div class="briefing-text" id="briefingText"></div>
+      </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" class="screen">
+      <div class="round-indicator" id="roundIndicator">ROUND 1/3</div>
+
+      <div class="game-layout">
+        <div class="info-panel">
+          <h3>AGENTS</h3>
+          <div id="playerStatus"></div>
+        </div>
+
+        <div class="game-main">
+          <div class="mission-area">
+            <div class="status-text" id="gameStatus">Waiting...</div>
+
+            <div id="missionSelect" class="hidden">
+              <h3>SELECT MISSION</h3>
+              <div class="mission-list" id="missionList"></div>
+            </div>
+
+            <div id="playerSelect" class="hidden">
+              <h3>SELECT TEAM MEMBERS</h3>
+              <p id="teamRequirement"></p>
+              <div class="player-grid" id="playerSelectGrid"></div>
+              <button onclick="startMission()" id="startMissionBtn">BEGIN MISSION</button>
+            </div>
+
+            <div id="cardSelect" class="hidden">
+              <h3>SUBMIT ITEM FOR MISSION</h3>
+              <p>Select one item card to contribute:</p>
+              <div class="card-hand" id="missionCardSelect"></div>
+            </div>
+
+            <div id="missionResult" class="hidden">
+              <h3>MISSION REPORT</h3>
+              <div id="resultDetails"></div>
+            </div>
+
+            <div id="votingArea" class="hidden">
+              <h2 style="text-align: center; color: #ff0000; margin-bottom: 20px;">
+                IDENTIFY THE DOUBLE AGENT
+              </h2>
+              <p id="votingInstructions" style="text-align: center; margin-bottom: 30px;"></p>
+              <div class="vote-grid" id="voteGrid"></div>
+            </div>
+          </div>
+
+          <div class="hand-area">
+            <h3>YOUR ITEMS (<span id="handCount">0</span>/5)</h3>
+            <div class="card-hand" id="cardHand"></div>
+          </div>
+        </div>
+
+        <div class="info-panel">
+          <h3>MISSION LOG</h3>
+          <div id="missionLog">
+            <div style="margin: 10px 0;">
+              <strong>Round 1:</strong>
+              <div id="round1Missions">No missions yet</div>
+            </div>
+            <div style="margin: 10px 0;">
+              <strong>Round 2:</strong>
+              <div id="round2Missions">Not started</div>
+            </div>
+            <div style="margin: 10px 0;">
+              <strong>Round 3:</strong>
+              <div id="round3Missions">Not started</div>
+            </div>
+          </div>
+          <div style="margin-top: 20px;">
+            <h3>PERSONS OF INTEREST</h3>
+            <div id="suspectList">None identified</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameoverScreen" class="screen">
+      <div class="gameover-container">
+        <h2 style="text-align: center; font-size: 2.5em; margin-bottom: 30px;">
+          MISSION COMPLETE
+        </h2>
+        <div class="result-message" id="resultMessage"></div>
+
+        <div class="stats-table">
+          <h3 style="text-align: center; margin-bottom: 20px;">FINAL REPORT</h3>
+          <div id="finalStats"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let myPlayerId = null;
+    let gameState = null;
+    let myHand = [];
+    let selectedMission = null;
+    let selectedCard = null;
+    let myRole = null;
+
+    // Auto-generate codename
+    function generateCodename() {
+      const adjectives = ['Shadow', 'Silent', 'Ghost', 'Crimson', 'Night', 'Steel', 'Phantom', 'Dark', 'Rogue', 'Viper'];
+      const nouns = ['Wolf', 'Falcon', 'Phoenix', 'Raven', 'Tiger', 'Fox', 'Cobra', 'Eagle', 'Panther', 'Hawk'];
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      return `${adj} ${noun}`;
+    }
+
+    // Set generated codename on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('playerName').value = generateCodename();
+    });
+
+    const MISSIONS = [
+      {
+        id: 1,
+        name: 'Infiltrate Enemy Base',
+        description: 'Breach security and gather intelligence',
+        playersNeeded: 2,
+        itemsRequired: 'Lockpick Set',
+        itemCount: 1
+      },
+      {
+        id: 2,
+        name: 'Decode Enemy Communications',
+        description: 'Intercept and decrypt classified messages',
+        playersNeeded: 2,
+        itemsRequired: 'Decoder Ring',
+        itemCount: 1
+      },
+      {
+        id: 3,
+        name: 'Track Target Location',
+        description: 'Locate and monitor high-value target',
+        playersNeeded: 3,
+        itemsRequired: 'Tracking Device',
+        itemCount: 2
+      }
+    ];
+
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    function joinLobby() {
+      const name = document.getElementById('playerName').value.trim() || generateCodename();
+      socket.emit('joinLobby', name);
+    }
+
+    function toggleReady() {
+      socket.emit('toggleReady');
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+      if (message) {
+        socket.emit('sendMessage', message);
+        input.value = '';
+      }
+    }
+
+    function selectMission(missionId) {
+      selectedMission = missionId;
+      socket.emit('selectMission', missionId);
+    }
+
+    function selectPlayerForMission(playerId) {
+      socket.emit('selectPlayerForMission', playerId);
+    }
+
+    function startMission() {
+      socket.emit('startMission');
+    }
+
+    function submitCard(cardIndex) {
+      socket.emit('submitCard', cardIndex);
+      selectedCard = cardIndex;
+    }
+
+    function vote(suspectId) {
+      socket.emit('vote', suspectId);
+      // Hide voting options and show waiting message
+      document.getElementById('voteGrid').innerHTML = '<p style="text-align: center; padding: 40px; font-size: 1.2em;">Vote submitted. Waiting for other agents...</p>';
+    }
+
+    // Socket event handlers
+    socket.on('joinedLobby', (data) => {
+      myPlayerId = data.playerId;
+      gameState = data.gameState;
+      showScreen('lobbyScreen');
+      updateLobby();
+    });
+
+    socket.on('playerJoined', (data) => {
+      gameState = data.gameState;
+      updateLobby();
+    });
+
+    socket.on('playerReadyChange', (data) => {
+      gameState = data.gameState;
+      updateLobby();
+    });
+
+    socket.on('newMessage', (msg) => {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message ${msg.type}`;
+      if (msg.type === 'player') {
+        msgDiv.innerHTML = `<strong>${msg.sender}:</strong> ${msg.text}`;
+      } else {
+        msgDiv.textContent = msg.text;
+      }
+      const chatMessages = document.getElementById('chatMessages');
+      chatMessages.appendChild(msgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+
+    socket.on('gameStarted', (data) => {
+      gameState = data;
+    });
+
+    socket.on('briefing', (data) => {
+      myRole = data.role;
+      showScreen('briefingScreen');
+
+      const badge = document.getElementById('roleBadge');
+      const text = document.getElementById('briefingText');
+
+      badge.textContent = data.role === 'double-agent' ? 'DOUBLE AGENT' : 'FIELD AGENT';
+      badge.className = `role-badge ${data.role}`;
+      text.textContent = data.message;
+    });
+
+    socket.on('phaseChange', (data) => {
+      gameState = data.gameState;
+      if (data.phase === 'playing') {
+        showScreen('gameScreen');
+        // Hide voting area when returning to playing phase
+        document.getElementById('votingArea').classList.add('hidden');
+        updateGameScreen();
+      }
+    });
+
+    socket.on('updateHand', (data) => {
+      myHand = data.hand;
+      updateHand();
+    });
+
+    socket.on('missionSelected', (data) => {
+      gameState = data.gameState;
+      selectedMission = data.mission;
+      updateGameScreen();
+    });
+
+    socket.on('playerSelectedForMission', (data) => {
+      gameState = data.gameState;
+      updateGameScreen();
+    });
+
+    socket.on('missionStarted', (data) => {
+      gameState = data.gameState;
+      updateGameScreen();
+    });
+
+    socket.on('cardSubmitted', (data) => {
+      gameState = data.gameState;
+      updateGameScreen();
+    });
+
+    socket.on('missionResolved', (data) => {
+      gameState = data.gameState;
+
+      document.getElementById('missionSelect').classList.add('hidden');
+      document.getElementById('playerSelect').classList.add('hidden');
+      document.getElementById('cardSelect').classList.add('hidden');
+      document.getElementById('missionResult').classList.remove('hidden');
+
+      const resultDiv = document.getElementById('resultDetails');
+      resultDiv.innerHTML = `
+        <p style="font-size: 1.5em; margin: 20px 0; color: ${data.success ? '#00ff00' : '#ff0000'};">
+          ${data.success ? 'MISSION SUCCESS' : 'MISSION FAILED'}
+        </p>
+        <p>Required: ${data.requiredCount} x ${data.requiredItem}</p>
+        <p>Received: ${data.actualCount} x ${data.requiredItem}</p>
+        <div style="margin-top: 20px;">
+          <strong>Items Submitted:</strong>
+          ${Object.entries(data.submittedCards).map(([id, card]) => {
+            const playerName = gameState.players.find(p => p.id === id)?.name;
+            const cardDisplay = card === null ? '<span style="color: #888;">(no cards)</span>' : card;
+            return `<div>${playerName}: ${cardDisplay}</div>`;
+          }).join('')}
+        </div>
+      `;
+    });
+
+    socket.on('turnChanged', (data) => {
+      gameState = data.gameState;
+      selectedMission = null;
+      document.getElementById('missionResult').classList.add('hidden');
+      updateGameScreen();
+    });
+
+    socket.on('votingStarted', (data) => {
+      gameState = data.gameState;
+      showScreen('gameScreen');
+
+      document.getElementById('missionSelect').classList.add('hidden');
+      document.getElementById('playerSelect').classList.add('hidden');
+      document.getElementById('cardSelect').classList.add('hidden');
+      document.getElementById('missionResult').classList.add('hidden');
+
+      // Restore voting area structure (in case it was replaced by roundComplete)
+      const votingArea = document.getElementById('votingArea');
+      votingArea.innerHTML = `
+        <h2 style="text-align: center; color: #ff0000; margin-bottom: 20px;">
+          IDENTIFY THE DOUBLE AGENT
+        </h2>
+        <p id="votingInstructions" style="text-align: center; margin-bottom: 30px;"></p>
+        <div class="vote-grid" id="voteGrid"></div>
+      `;
+      votingArea.classList.remove('hidden');
+
+      const instructions = document.getElementById('votingInstructions');
+      if (data.isLastRound) {
+        instructions.textContent = 'FINAL ROUND: Identify the double agent or the bomb detonates!';
+        instructions.style.color = '#ff0000';
+      } else {
+        instructions.textContent = `Round ${data.round} Complete: Vote for your primary suspect.`;
+        instructions.style.color = '#ffff00';
+      }
+
+      const voteGrid = document.getElementById('voteGrid');
+      voteGrid.innerHTML = gameState.players
+        .filter(p => p.id !== myPlayerId)
+        .map(p => `
+          <div class="vote-option" onclick="vote('${p.id}')">
+            ${p.name}
+          </div>
+        `).join('');
+    });
+
+    socket.on('voteSubmitted', (data) => {
+      gameState = data.gameState;
+    });
+
+    socket.on('roundComplete', (data) => {
+      gameState = data.gameState;
+
+      // Show persons of interest screen
+      document.getElementById('votingArea').innerHTML = `
+        <h2 style="text-align: center; color: #ff0000; margin-bottom: 20px;">
+          ROUND ${data.round} COMPLETE
+        </h2>
+        <div style="text-align: center; font-size: 1.5em; padding: 40px; border: 2px solid #ffff00; background: rgba(255, 255, 0, 0.1);">
+          <strong>PERSONS OF INTEREST:</strong><br><br>
+          <span style="color: #ffff00; font-size: 1.3em;">
+            ${data.personsOfInterest.join(', ')}
+          </span>
+        </div>
+        <p style="text-align: center; margin-top: 30px; color: #00ff00;">
+          Next round starting soon...
+        </p>
+      `;
+    });
+
+    socket.on('gameOver', (data) => {
+      showScreen('gameoverScreen');
+
+      const resultMsg = document.getElementById('resultMessage');
+      // Show appropriate message based on role
+      const message = myRole === 'double-agent' ? data.outcome.doubleAgentMessage : data.outcome.agentsMessage;
+      resultMsg.textContent = message;
+
+      // Color based on your outcome
+      if (myRole === 'double-agent') {
+        resultMsg.style.color = data.outcome.result === 'double-agent-wins' ? '#00ff00' : '#ff0000';
+      } else {
+        resultMsg.style.color = data.outcome.result === 'agents-win' ? '#00ff00' : '#ff0000';
+      }
+
+      const statsDiv = document.getElementById('finalStats');
+      statsDiv.innerHTML = data.finalStats.players.map(p => `
+        <div class="stat-row">
+          <span>${p.name} ${p.isDoubleAgent ? '(DOUBLE AGENT)' : ''}</span>
+          <span>Mission Points: ${p.missionPoints}</span>
+        </div>
+      `).join('');
+    });
+
+    function updateLobby() {
+      const playerList = document.getElementById('playerList');
+      playerList.innerHTML = gameState.players.map(p => `
+        <li class="player-item ${p.ready ? 'ready' : ''}">
+          ${p.name} ${p.id === myPlayerId ? '(YOU)' : ''}
+          ${p.ready ? '- READY' : ''}
+        </li>
+      `).join('');
+
+      const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+      if (myPlayer) {
+        document.getElementById('readyBtn').textContent = myPlayer.ready ? 'UNMARK READY' : 'MARK READY';
+      }
+    }
+
+    function updateGameScreen() {
+      if (!gameState) return;
+
+      document.getElementById('roundIndicator').textContent = `ROUND ${gameState.currentRound}/3`;
+
+      // Update player status
+      const statusDiv = document.getElementById('playerStatus');
+      statusDiv.innerHTML = gameState.players.map((p, idx) => {
+        const isPOI = gameState.personsOfInterest?.includes(p.name);
+        return `
+          <div style="margin: 10px 0; padding: 10px; border: 1px solid ${isPOI ? '#ff0000' : (idx === gameState.currentPlayerIndex ? '#ffff00' : '#00ff00')};">
+            ${p.name} ${p.id === myPlayerId ? '(YOU)' : ''}
+            ${isPOI ? '<br><span style="color: #ff0000;">[SUSPECT]</span>' : ''}
+            <br>Points: ${p.missionPoints} | Cards: ${p.handSize}
+            ${idx === gameState.currentPlayerIndex ? '<br>[ACTIVE]' : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Update suspect list
+      const suspectList = document.getElementById('suspectList');
+      if (gameState.personsOfInterest && gameState.personsOfInterest.length > 0) {
+        suspectList.innerHTML = gameState.personsOfInterest.map(name =>
+          `<div style="padding: 5px; color: #ff0000;">${name}</div>`
+        ).join('');
+      } else {
+        suspectList.innerHTML = 'None identified';
+      }
+
+      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+      const isMyTurn = currentPlayer?.id === myPlayerId;
+
+      // Update game status
+      const statusText = document.getElementById('gameStatus');
+      if (gameState.currentMission && gameState.missionStarted) {
+        // Mission is in progress
+        const submittedCount = gameState.submittedCardPlayers?.length || 0;
+        statusText.innerHTML = `
+          <strong>${gameState.currentMission.name}</strong><br>
+          Required: ${gameState.currentMission.itemCount} x ${gameState.currentMission.itemsRequired}<br>
+          Items submitted: ${submittedCount}/${gameState.selectedPlayers.length}
+        `;
+        statusText.style.color = '#ffff00';
+      } else if (isMyTurn && !gameState.currentMission) {
+        statusText.textContent = 'YOUR TURN - Select a mission';
+        statusText.style.color = '#ffff00';
+      } else if (isMyTurn && gameState.currentMission) {
+        statusText.textContent = 'YOUR TURN - Select team members';
+        statusText.style.color = '#ffff00';
+      } else {
+        statusText.textContent = `${currentPlayer?.name}'s turn`;
+        statusText.style.color = '#00ff00';
+      }
+
+      // Show appropriate interface
+      // Don't show game interface during voting phase
+      if (gameState.phase === 'voting') {
+        document.getElementById('missionSelect').classList.add('hidden');
+        document.getElementById('playerSelect').classList.add('hidden');
+        document.getElementById('cardSelect').classList.add('hidden');
+        return; // Exit early, voting interface is shown separately
+      }
+
+      // Check card selection first (for players on active missions)
+      if (gameState.currentMission && gameState.missionStarted && gameState.selectedPlayers.includes(myPlayerId) && !gameState.submittedCardPlayers?.includes(myPlayerId) && myHand.length > 0) {
+        // Show card selection
+        document.getElementById('missionSelect').classList.add('hidden');
+        document.getElementById('playerSelect').classList.add('hidden');
+        document.getElementById('cardSelect').classList.remove('hidden');
+
+        const cardSelect = document.getElementById('missionCardSelect');
+        cardSelect.innerHTML = myHand.map((card, idx) => `
+          <div class="item-card" onclick="submitCard(${idx})">
+            ${card}
+          </div>
+        `).join('');
+      } else if (gameState.currentMission && gameState.missionStarted && gameState.selectedPlayers.includes(myPlayerId) && (gameState.submittedCardPlayers?.includes(myPlayerId) || myHand.length === 0)) {
+        // Player has submitted, waiting for others
+        document.getElementById('missionSelect').classList.add('hidden');
+        document.getElementById('playerSelect').classList.add('hidden');
+        document.getElementById('cardSelect').classList.add('hidden');
+      } else if (isMyTurn && !gameState.currentMission) {
+        // Show mission selection
+        document.getElementById('missionSelect').classList.remove('hidden');
+        document.getElementById('playerSelect').classList.add('hidden');
+        document.getElementById('cardSelect').classList.add('hidden');
+
+        const missionList = document.getElementById('missionList');
+        missionList.innerHTML = MISSIONS.map(m => `
+          <div class="mission-card" onclick="selectMission(${m.id})">
+            <h4>${m.name}</h4>
+            <p style="margin: 10px 0; font-size: 0.9em;">${m.description}</p>
+            <p style="color: #ffff00;">Team: ${m.playersNeeded}</p>
+            <p style="color: #ffff00;">Required: ${m.itemCount} x ${m.itemsRequired}</p>
+          </div>
+        `).join('');
+      } else if (isMyTurn && gameState.currentMission && gameState.selectedPlayers.length <= gameState.currentMission.playersNeeded) {
+        // Show player selection
+        document.getElementById('missionSelect').classList.add('hidden');
+        document.getElementById('playerSelect').classList.remove('hidden');
+        document.getElementById('cardSelect').classList.add('hidden');
+
+        const needMore = gameState.currentMission.playersNeeded - gameState.selectedPlayers.length;
+        document.getElementById('teamRequirement').innerHTML =
+          `<strong>Mission: ${gameState.currentMission.name}</strong><br>
+          Required: ${gameState.currentMission.itemCount} x ${gameState.currentMission.itemsRequired}<br>
+          Team size: ${gameState.currentMission.playersNeeded} agents<br><br>` +
+          (needMore > 0
+            ? `You are on this mission. Select ${needMore} more agent(s) to join you.`
+            : 'Team complete. Start the mission!');
+
+        const grid = document.getElementById('playerSelectGrid');
+        grid.innerHTML = gameState.players
+          .filter(p => p.id !== myPlayerId)
+          .map(p => {
+            const isSelected = gameState.selectedPlayers.includes(p.id);
+            return `
+              <div class="player-select ${isSelected ? 'selected' : ''}"
+                   onclick="selectPlayerForMission('${p.id}')">
+                ${p.name} ${isSelected ? '✓' : ''}
+              </div>
+            `;
+          }).join('');
+
+        document.getElementById('startMissionBtn').disabled =
+          gameState.selectedPlayers.length !== gameState.currentMission.playersNeeded;
+      } else {
+        document.getElementById('missionSelect').classList.add('hidden');
+        document.getElementById('playerSelect').classList.add('hidden');
+        document.getElementById('cardSelect').classList.add('hidden');
+      }
+
+      updateHand();
+    }
+
+    function updateHand() {
+      document.getElementById('handCount').textContent = myHand.length;
+      const handDiv = document.getElementById('cardHand');
+      handDiv.innerHTML = myHand.map((card, idx) => `
+        <div class="item-card">
+          ${card}
+        </div>
+      `).join('');
+    }
+
+    socket.on('joinFailed', (data) => {
+      alert(data.reason);
+    });
+
+    socket.on('gameCancelled', (data) => {
+      alert(data.reason);
+      location.reload();
+    });
+  </script>
+</body>
+</html>
