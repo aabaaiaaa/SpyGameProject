@@ -8,3 +8,6 @@ npm-debug.log*
 Thumbs.db
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+.playwright/

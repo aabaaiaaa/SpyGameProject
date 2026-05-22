@@ -10,38 +10,20 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-const ITEM_TYPES = [
-  'Encrypted USB', 'Satellite Phone', 'Fingerprint Scanner',
-  'Night Vision Goggles', 'Lockpick Set', 'Tracking Device',
-  'Disguise Kit', 'Poison Vial', 'Decoder Ring', 'Blueprint'
-];
+const TEST_MODE = process.env.TEST_MODE === '1';
+const intEnv = (name, fallback) => parseInt(process.env[name] || String(fallback), 10);
+const BRIEFING_MS = intEnv('BRIEFING_MS', TEST_MODE ? 100 : 8000);
+const READY_DELAY_MS = intEnv('READY_DELAY_MS', TEST_MODE ? 50 : 2000);
+const MISSION_RESOLVE_MS = intEnv('MISSION_RESOLVE_MS', TEST_MODE ? 150 : 5000);
+const ROUND_DELAY_MS = intEnv('ROUND_DELAY_MS', TEST_MODE ? 200 : 5000);
+const VOTE_PROCESS_MS = intEnv('VOTE_PROCESS_MS', TEST_MODE ? 100 : 2000);
 
-const MISSIONS = [
-  {
-    id: 1,
-    name: 'Infiltrate Enemy Base',
-    description: 'Breach security and gather intelligence',
-    playersNeeded: 2,
-    itemsRequired: 'Lockpick Set',
-    itemCount: 1
-  },
-  {
-    id: 2,
-    name: 'Decode Enemy Communications',
-    description: 'Intercept and decrypt classified messages',
-    playersNeeded: 2,
-    itemsRequired: 'Decoder Ring',
-    itemCount: 1
-  },
-  {
-    id: 3,
-    name: 'Track Target Location',
-    description: 'Locate and monitor high-value target',
-    playersNeeded: 3,
-    itemsRequired: 'Tracking Device',
-    itemCount: 2
-  }
-];
+// Test-mode runtime overrides, settable via POST /__test/reset.
+let testDeckPattern = null; // null -> default (all "Encrypted USB")
+let testDoubleAgentIndex = 0;
+
+const game = require('./game');
+const { MISSIONS, evaluateMission, computePersonsOfInterest, computeOutcome, sanitizeStateForClient } = game;
 
 class Player {
   constructor(id, name) {
@@ -72,19 +54,15 @@ const gameState = {
 };
 
 function createDeck() {
-  const deck = [];
-  for (let i = 0; i < 8; i++) { // 8 of each item type
-    ITEM_TYPES.forEach(item => deck.push(item));
+  if (TEST_MODE) {
+    const pattern = (testDeckPattern && testDeckPattern.length > 0)
+      ? testDeckPattern
+      : ['Encrypted USB'];
+    const out = [];
+    while (out.length < 80) out.push(...pattern);
+    return out.slice(0, 80);
   }
-  return shuffleDeck(deck);
-}
-
-function shuffleDeck(deck) {
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
+  return game.shuffleDeck(game.createDeck());
 }
 
 function dealCards() {
@@ -112,10 +90,39 @@ function topUpCards() {
 }
 
 function selectDoubleAgent() {
-  const randomIndex = Math.floor(Math.random() * gameState.players.length);
+  const randomIndex = TEST_MODE
+    ? Math.max(0, Math.min(testDoubleAgentIndex, gameState.players.length - 1))
+    : Math.floor(Math.random() * gameState.players.length);
   const doubleAgent = gameState.players[randomIndex];
   doubleAgent.isDoubleAgent = true;
   gameState.doubleAgentId = doubleAgent.id;
+}
+
+function buildOutcomeMessages(branch, doubleAgent) {
+  const name = doubleAgent.name;
+  if (branch === 'caught') {
+    return {
+      result: 'agents-win',
+      agentsMessage: `MISSION SUCCESS! After intense interrogation, ${name} revealed the bomb location. The device has been secured and defused! Well done agents!`,
+      doubleAgentMessage: `MISSION FAILURE! Your cover has been blown, ${name}. Under pressure, you revealed the bomb's location. You will be dealt with in a dark alley... permanently.`,
+      doubleAgent: name,
+    };
+  }
+  if (branch === 'sabotage') {
+    return {
+      result: 'double-agent-wins',
+      agentsMessage: `CATASTROPHIC FAILURE! The double agent ${name} has succeeded! The bomb detonates! GAME OVER!`,
+      doubleAgentMessage: `MISSION SUCCESS! You remained undetected, ${name}. The bomb has detonated and chaos reigns. Your handlers are pleased.`,
+      doubleAgent: name,
+    };
+  }
+  // 'alternative'
+  return {
+    result: 'agents-win',
+    agentsMessage: `PARTIAL SUCCESS! Despite not catching ${name}, your team prevented enough sabotage. The bomb has been located and defused through alternative means!`,
+    doubleAgentMessage: `MISSION FAILURE! Though you escaped detection, ${name}, your sabotage was insufficient. The bomb has been defused. Your handlers are... disappointed.`,
+    doubleAgent: name,
+  };
 }
 
 function startGame() {
@@ -152,30 +159,11 @@ function startGame() {
   setTimeout(() => {
     gameState.phase = 'playing';
     io.emit('phaseChange', { phase: 'playing', gameState: getGameStateForClient() });
-  }, 8000);
+  }, BRIEFING_MS);
 }
 
 function getGameStateForClient() {
-  return {
-    phase: gameState.phase,
-    players: gameState.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      missionPoints: p.missionPoints,
-      handSize: p.hand.length,
-      ready: p.ready
-    })),
-    messages: gameState.messages,
-    currentRound: gameState.currentRound,
-    currentPlayerIndex: gameState.currentPlayerIndex,
-    currentMission: gameState.currentMission,
-    selectedPlayers: gameState.selectedPlayers,
-    submittedCardPlayers: Object.keys(gameState.submittedCards),
-    personsOfInterest: gameState.personsOfInterest,
-    missionsFailed: gameState.missionsFailed,
-    roundComplete: gameState.roundComplete,
-    missionStarted: gameState.missionStarted
-  };
+  return sanitizeStateForClient(gameState);
 }
 
 function getCurrentPlayer() {
@@ -217,17 +205,7 @@ function startVoting() {
 }
 
 function processVotes() {
-  const voteCounts = {};
-  gameState.players.forEach(p => voteCounts[p.id] = 0);
-
-  Object.values(gameState.votes).forEach(votedFor => {
-    voteCounts[votedFor]++;
-  });
-
-  const maxVotes = Math.max(...Object.values(voteCounts));
-  gameState.personsOfInterest = Object.keys(voteCounts)
-    .filter(id => voteCounts[id] === maxVotes)
-    .map(id => gameState.players.find(p => p.id === id).name);
+  gameState.personsOfInterest = computePersonsOfInterest(gameState.votes, gameState.players);
 
   if (gameState.currentRound === 3) {
     endGame();
@@ -246,53 +224,21 @@ function processVotes() {
       gameState.phase = 'playing';
       topUpCards(); // Top up all players to 5 cards at start of round
       io.emit('phaseChange', { phase: 'playing', gameState: getGameStateForClient() });
-    }, 5000);
+    }, ROUND_DELAY_MS);
   }
 }
 
 function endGame() {
   gameState.phase = 'gameover';
 
-  const suspectIds = Object.keys(gameState.votes)
-    .map(voterId => gameState.votes[voterId]);
-
-  const voteCounts = {};
-  suspectIds.forEach(id => {
-    voteCounts[id] = (voteCounts[id] || 0) + 1;
-  });
-
-  const maxVotes = Math.max(...Object.values(voteCounts));
-  const suspectedIds = Object.keys(voteCounts).filter(id => voteCounts[id] === maxVotes);
-
-  const doubleAgentCaught = suspectedIds.includes(gameState.doubleAgentId);
+  const result = computeOutcome(
+    gameState.votes,
+    gameState.players,
+    gameState.doubleAgentId,
+    gameState.missionsFailed
+  );
   const doubleAgent = gameState.players.find(p => p.id === gameState.doubleAgentId);
-
-  const missionFailuresByRound = gameState.missionsFailed;
-  const doubleAgentSucceeded = missionFailuresByRound.every(failures => failures >= 1);
-
-  let outcome;
-  if (doubleAgentCaught) {
-    outcome = {
-      result: 'agents-win',
-      agentsMessage: `MISSION SUCCESS! After intense interrogation, ${doubleAgent.name} revealed the bomb location. The device has been secured and defused! Well done agents!`,
-      doubleAgentMessage: `MISSION FAILURE! Your cover has been blown, ${doubleAgent.name}. Under pressure, you revealed the bomb's location. You will be dealt with in a dark alley... permanently.`,
-      doubleAgent: doubleAgent.name
-    };
-  } else if (doubleAgentSucceeded) {
-    outcome = {
-      result: 'double-agent-wins',
-      agentsMessage: `CATASTROPHIC FAILURE! The double agent ${doubleAgent.name} has succeeded! The bomb detonates! GAME OVER!`,
-      doubleAgentMessage: `MISSION SUCCESS! You remained undetected, ${doubleAgent.name}. The bomb has detonated and chaos reigns. Your handlers are pleased.`,
-      doubleAgent: doubleAgent.name
-    };
-  } else {
-    outcome = {
-      result: 'agents-win',
-      agentsMessage: `PARTIAL SUCCESS! Despite not catching ${doubleAgent.name}, your team prevented enough sabotage. The bomb has been located and defused through alternative means!`,
-      doubleAgentMessage: `MISSION FAILURE! Though you escaped detection, ${doubleAgent.name}, your sabotage was insufficient. The bomb has been defused. Your handlers are... disappointed.`,
-      doubleAgent: doubleAgent.name
-    };
-  }
+  const outcome = buildOutcomeMessages(result.branch, doubleAgent);
 
   io.emit('gameOver', {
     outcome: outcome,
@@ -302,7 +248,7 @@ function endGame() {
         missionPoints: p.missionPoints,
         isDoubleAgent: p.isDoubleAgent
       })),
-      missionsFailed: missionFailuresByRound
+      missionsFailed: gameState.missionsFailed
     }
   });
 }
@@ -371,7 +317,7 @@ io.on('connection', (socket) => {
 
     const allReady = gameState.players.length >= 3 && gameState.players.every(p => p.ready);
     if (allReady) {
-      setTimeout(() => startGame(), 2000);
+      setTimeout(() => startGame(), READY_DELAY_MS);
     }
   });
 
@@ -462,7 +408,7 @@ io.on('connection', (socket) => {
     });
 
     if (Object.keys(gameState.votes).length === gameState.players.length) {
-      setTimeout(() => processVotes(), 2000);
+      setTimeout(() => processVotes(), VOTE_PROCESS_MS);
     }
   });
 
@@ -497,10 +443,7 @@ function resolveMission() {
   const mission = gameState.currentMission;
   const currentPlayer = getCurrentPlayer();
 
-  const submittedItems = Object.values(gameState.submittedCards).filter(item => item !== null);
-  const requiredItemCount = submittedItems.filter(item => item === mission.itemsRequired).length;
-
-  const success = requiredItemCount >= mission.itemCount;
+  const { success, requiredItemCount } = evaluateMission(mission, gameState.submittedCards);
 
   if (success) {
     currentPlayer.missionPoints++;
@@ -542,7 +485,42 @@ function resolveMission() {
     nextTurn();
     checkRoundEnd();
     io.emit('turnChanged', { gameState: getGameStateForClient() });
-  }, 5000);
+  }, MISSION_RESOLVE_MS);
+}
+
+if (TEST_MODE) {
+  app.use(express.json());
+  app.post('/__test/reset', (req, res) => {
+    const body = req.body || {};
+    testDeckPattern = Array.isArray(body.deck) ? body.deck : null;
+    testDoubleAgentIndex = typeof body.doubleAgentIndex === 'number' ? body.doubleAgentIndex : 0;
+
+    // Force-disconnect any sockets left over from a previous test. Without
+    // this, a stale socket can fire its disconnect handler mid-new-test and
+    // emit a spurious `gameCancelled` to the fresh clients.
+    for (const sock of io.sockets.sockets.values()) {
+      sock.disconnect(true);
+    }
+
+    Object.assign(gameState, {
+      phase: 'lobby',
+      players: [],
+      messages: [],
+      doubleAgentId: null,
+      currentRound: 0,
+      currentPlayerIndex: 0,
+      currentMission: null,
+      selectedPlayers: [],
+      submittedCards: {},
+      votes: {},
+      personsOfInterest: [],
+      missionsFailed: [0, 0, 0],
+      roundComplete: false,
+      missionStarted: false
+    });
+
+    res.json({ ok: true, deckPattern: testDeckPattern, doubleAgentIndex: testDoubleAgentIndex });
+  });
 }
 
 const PORT = process.env.PORT || 5000;
